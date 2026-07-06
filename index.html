@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor de Plano de Contas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+        }
+
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        input[type="file"]::file-selector-button {
+            display: none;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">Conversor de Contas</h1>
+                <p class="text-indigo-200">Importe seu Excel e mapeie para o formato padrão</p>
+            </div>
+            <button onclick="document.getElementById('excelInput').click()" class="glass px-6 py-3 flex items-center gap-2 hover:bg-white/20 transition-all font-medium">
+                <i data-lucide="upload" class="w-5 h-5"></i>
+                Importar Excel
+            </button>
+            <input type="file" id="excelInput" accept=".xlsx, .xls" class="hidden" onchange="handleFile(event)">
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <div id="emptyState" class="glass p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
+                <div class="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-6">
+                    <i data-lucide="file-spreadsheet" class="w-10 h-10 text-indigo-300"></i>
+                </div>
+                <h2 class="text-2xl font-semibold mb-2">Nenhum dado carregado</h2>
+                <p class="text-indigo-200 mb-8 max-w-md">Clique no botão acima para importar seu arquivo Excel e iniciar o mapeamento dos campos.</p>
+                <button onclick="document.getElementById('excelInput').click()" class="bg-white text-indigo-600 px-8 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-all shadow-lg">
+                    Selecionar Arquivo
+                </button>
+            </div>
+
+            <div id="contentArea" class="hidden space-y-6">
+                <div class="glass p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="list" class="text-indigo-300"></i>
+                            <h2 class="text-xl font-bold uppercase tracking-wider">Plano de Contas</h2>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="openMappingModal()" class="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg flex items-center gap-2 transition-all border border-white/10">
+                                <i data-lucide="settings-2" class="w-4 h-4"></i>
+                                Mapear Campos
+                            </button>
+                            <button onclick="generateTxt()" class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-all font-bold shadow-lg shadow-green-500/20">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                GERAR TXT
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar rounded-xl border border-white/10">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-white/5 text-indigo-200 text-xs uppercase">
+                                <tr>
+                                    <th class="p-4 border-b border-white/10">Empresa</th>
+                                    <th class="p-4 border-b border-white/10">Reduzido</th>
+                                    <th class="p-4 border-b border-white/10">Descrição</th>
+                                    <th class="p-4 border-b border-white/10">Classificação</th>
+                                    <th class="p-4 border-b border-white/10">Tipo</th>
+                                    <th class="p-4 border-b border-white/10">Fixo 1</th>
+                                    <th class="p-4 border-b border-white/10">Fixo 2</th>
+                                    <th class="p-4 border-b border-white/10">Fixo 3</th>
+                                    <th class="p-4 border-b border-white/10">Fixo 4</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="text-sm">
+                                <!-- Dados virão aqui -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Mapping Modal -->
+    <div id="mappingModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50 hidden p-4">
+        <div class="glass w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <h3 class="text-xl font-bold">Mapeamento de Campos</h3>
+                <button onclick="closeMappingModal()" class="hover:bg-white/10 p-2 rounded-full transition-all">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+                <p class="text-indigo-200 text-sm mb-4">Selecione qual coluna do seu Excel corresponde a cada campo do sistema.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="mappingControls">
+                    <!-- Controles de mapeamento dinâmicos -->
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase text-indigo-300">Código Empresa</label>
+                        <select data-field="empresa" class="w-full bg-white/10 border border-white/20 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mapping-select">
+                            <option value="">Não mapeado</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase text-indigo-300">Código Reduzido</label>
+                        <select data-field="reduzido" class="w-full bg-white/10 border border-white/20 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mapping-select">
+                            <option value="">Não mapeado</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase text-indigo-300">Descrição</label>
+                        <select data-field="descricao" class="w-full bg-white/10 border border-white/20 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mapping-select">
+                            <option value="">Não mapeado</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase text-indigo-300">Classificação</label>
+                        <select data-field="classificacao" class="w-full bg-white/10 border border-white/20 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mapping-select">
+                            <option value="">Não mapeado</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase text-indigo-300">Tipo (A/S)</label>
+                        <select data-field="tipo" class="w-full bg-white/10 border border-white/20 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mapping-select">
+                            <option value="">Não mapeado</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 border-t border-white/10 flex justify-end gap-3 bg-white/5">
+                <button onclick="closeMappingModal()" class="px-6 py-2 rounded-lg hover:bg-white/10 transition-all">Cancelar</button>
+                <button onclick="applyMapping()" class="bg-indigo-500 hover:bg-indigo-600 px-8 py-2 rounded-lg font-bold shadow-lg shadow-indigo-500/20 transition-all">Aplicar Mapeamento</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inicializar ícones
+        lucide.createIcons();
+
+        let rawData = [];
+        let excelHeaders = [];
+        let currentMapping = {
+            empresa: '',
+            reduzido: '',
+            descricao: '',
+            classificacao: '',
+            tipo: ''
+        };
+
+        // Ao carregar, tenta abrir o seletor de arquivo (alguns browsers bloqueiam sem interação)
+        window.onload = () => {
+            // Pequeno delay para garantir que o DOM está pronto
+            setTimeout(() => {
+                document.getElementById('excelInput').click();
+            }, 500);
+        };
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // Converter para JSON ignorando linhas vazias
+                rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                
+                if (rawData.length > 0) {
+                    excelHeaders = rawData[0];
+                    // Tentar mapeamento automático por nome aproximado
+                    autoMapHeaders();
+                    updateMappingSelects();
+                    openMappingModal();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function autoMapHeaders() {
+            const mappings = {
+                empresa: ['empresa', 'cod', 'código', 'cod_empresa'],
+                reduzido: ['reduzido', 'cod_red', 'reduz'],
+                descricao: ['descricao', 'descrição', 'nome', 'conta'],
+                classificacao: ['classificacao', 'classificação', 'mascara', 'máscara'],
+                tipo: ['tipo', 'a/s', 'as', 'natureza']
+            };
+
+            excelHeaders.forEach((header, index) => {
+                const h = String(header).toLowerCase().trim();
+                for (let key in mappings) {
+                    if (mappings[key].some(term => h.includes(term))) {
+                        currentMapping[key] = index;
+                    }
+                }
+            });
+        }
+
+        function updateMappingSelects() {
+            const selects = document.querySelectorAll('.mapping-select');
+            selects.forEach(select => {
+                const field = select.dataset.field;
+                select.innerHTML = '<option value="">Não mapeado</option>';
+                excelHeaders.forEach((header, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = header || `Coluna ${index + 1}`;
+                    if (currentMapping[field] === index) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        function openMappingModal() {
+            document.getElementById('mappingModal').classList.remove('hidden');
+        }
+
+        function closeMappingModal() {
+            document.getElementById('mappingModal').classList.add('hidden');
+        }
+
+        function applyMapping() {
+            const selects = document.querySelectorAll('.mapping-select');
+            selects.forEach(select => {
+                currentMapping[select.dataset.field] = select.value !== "" ? parseInt(select.value) : "";
+            });
+
+            renderTable();
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('contentArea').classList.remove('hidden');
+            closeMappingModal();
+        }
+
+        function formatValue(val) {
+            if (val === undefined || val === null) return '';
+            let s = String(val).trim();
+            // Se for número, trocar . por ,
+            if (!isNaN(s) && s !== '') {
+                // Remove separador de milhar se houver (assumindo formato americano vindo do Excel)
+                // Mas o XLSX já costuma dar o valor limpo. 
+                // Garantir separador decimal como vírgula
+                s = s.replace('.', ',');
+            }
+            return s;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            // Pular cabeçalho
+            const rows = rawData.slice(1).filter(row => row.some(cell => cell !== ''));
+
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-white/5 transition-colors border-b border-white/5';
+                
+                const fields = [
+                    row[currentMapping.empresa] || '',
+                    row[currentMapping.reduzido] || '',
+                    row[currentMapping.descricao] || '',
+                    row[currentMapping.classificacao] || '',
+                    row[currentMapping.tipo] || '',
+                    '1', '1', '1', '1' // Fixos solicitados
+                ];
+
+                fields.forEach(field => {
+                    const td = document.createElement('td');
+                    td.className = 'p-4';
+                    td.textContent = formatValue(field);
+                    tr.appendChild(td);
+                });
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function generateTxt() {
+            // Pular cabeçalho e linhas vazias
+            const rows = rawData.slice(1).filter(row => row.some(cell => cell !== ''));
+            
+            if (rows.length === 0) {
+                alert('Não há dados para exportar.');
+                return;
+            }
+
+            let txtContent = '';
+
+            rows.forEach((row, index) => {
+                // Montar array de 20 colunas conforme especificado
+                // |código empresa|código reduzido|descrição|classificação|tipo(A/S)|||||||||||1||1|1|1
+                const outputFields = Array(20).fill('');
+                
+                outputFields[0] = formatValue(row[currentMapping.empresa]);
+                outputFields[1] = formatValue(row[currentMapping.reduzido]);
+                outputFields[2] = formatValue(row[currentMapping.descricao]);
+                outputFields[3] = formatValue(row[currentMapping.classificacao]);
+                outputFields[4] = formatValue(row[currentMapping.tipo]);
+                
+                // Campos 5 a 14 ficam vazios (índices 5 a 14)
+                
+                outputFields[15] = '1'; // Campo 16
+                outputFields[16] = '';  // Campo 17
+                outputFields[17] = '1'; // Campo 18
+                outputFields[18] = '1'; // Campo 19
+                outputFields[19] = '1'; // Campo 20
+
+                txtContent += outputFields.join(';');
+                if (index < rows.length - 1) {
+                    txtContent += '\n';
+                }
+            });
+
+            const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'contas_convertidas.txt';
+            link.click();
+        }
+    </script>
+</body>
+</html>
